@@ -1,6 +1,8 @@
 # gh-art
 
-A lo-fi ASCII art screensaver for the GitHub CLI.
+A hi-fi ASCII art screensaver for the GitHub CLI.
+
+![demo](demo.gif)
 
 ## Install
 
@@ -11,24 +13,26 @@ gh extension install maxbeizer/gh-art
 ## Usage
 
 ```bash
-gh art
-
-gh art --interval 10s
-
-gh art list
-
-gh art show <name>
+gh art                   # start screensaver
+gh art --interval 10s    # custom rotation interval
+gh art list              # list available artworks
+gh art show <name>       # show a specific artwork
 ```
+
+### Controls
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `n` | Next artwork |
+| `Shift-Tab` / `p` | Previous artwork |
+| `q` / `Ctrl-C` | Quit |
 
 ## Artworks
 
-- great-wave
-- mona-lisa
-- starry-night
-- the-scream
-- girl-pearl
-- creation-adam
-- soup-can
-- mondrian
-- son-of-man
-- don-quixote
+- great-wave — *The Great Wave off Kanagawa* (Hokusai, 1831)
+- mona-lisa — *Mona Lisa* (da Vinci, 1503)
+- starry-night — *The Starry Night* (van Gogh, 1889)
+- the-scream — *The Scream* (Munch, 1893)
+- girl-pearl — *Girl with a Pearl Earring* (Vermeer, 1665)
+- creation-adam — *The Creation of Adam* (Michelangelo, 1512)
+- mondrian — *Composition with Red, Blue, and Yellow* (Mondrian, 1930)
