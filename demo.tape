@@ -9,18 +9,19 @@ Set Padding 20
 
 Type "gh art"
 Enter
-Sleep 4s
-
-# Cycle through a few artworks with tab
-Type "	"
-Sleep 4s
+Sleep 5s
 
 Type "	"
-Sleep 4s
+Sleep 5s
 
 Type "	"
-Sleep 4s
+Sleep 5s
 
-# Exit
+Type "	"
+Sleep 5s
+
+Type "	"
+Sleep 5s
+
 Type "q"
 Sleep 1s
