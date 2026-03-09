@@ -233,7 +233,7 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 	if err != nil {
 		return err
 	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
 
 	// Hide cursor
 	fmt.Print("\033[?25l")
