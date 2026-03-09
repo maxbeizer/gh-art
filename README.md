@@ -49,3 +49,13 @@ gh art show <name>       # show a specific artwork
 | grande-jatte | [A Sunday on La Grande Jatte](https://en.wikipedia.org/wiki/A_Sunday_Afternoon_on_the_Island_of_La_Grande_Jatte) | Georges Seurat | 1886 |
 
 All artworks are in the [public domain](https://en.wikipedia.org/wiki/Public_domain). ASCII art is generated from photographs of these paintings using [jp2a](https://github.com/cslarsen/jp2a).
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to get started.
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+[MIT](LICENSE)
