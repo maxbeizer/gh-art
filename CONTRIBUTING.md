@@ -52,7 +52,46 @@ Have an idea for a new feature? [Open a feature request](../../issues/new?templa
 
 ## Adding New Artworks
 
-Artworks included in gh-art must be in the **public domain**. All artwork images are converted to ASCII using [jp2a](https://github.com/cslarsen/jp2a). If you'd like to add a new artwork, please ensure it meets these criteria and follow the existing artwork format.
+Artworks included in gh-art must be in the **public domain**. All artwork images
+are converted to ASCII using [jp2a](https://github.com/cslarsen/jp2a).
+
+### Artwork file format
+
+Each artwork lives in its own `.txt` file inside the `artworks/` directory. The
+file must start with YAML-style frontmatter delimited by `---` lines:
+
+```text
+---
+name: my-artwork
+title: My Artwork
+artist: Some Artist
+year: 1900
+url: https://en.wikipedia.org/wiki/My_Artwork
+---
+<ASCII art content here>
+```
+
+**Required frontmatter fields:**
+
+| Field    | Description                                      |
+|----------|--------------------------------------------------|
+| `name`   | Unique kebab-case identifier (used in `gh art show <name>`) |
+| `title`  | Human-readable title of the artwork              |
+| `artist` | Name of the original artist                      |
+| `year`   | Year the artwork was created/completed           |
+| `url`    | Wikipedia or reference URL                       |
+
+### Guidelines
+
+- The ASCII art content follows immediately after the closing `---` line.
+- Keep dimensions reasonable for a typical terminal (~80–120 columns wide).
+- Use [jp2a](https://github.com/cslarsen/jp2a) or a similar tool to convert images.
+- Run `make build && ./bin/gh-art show my-artwork` to verify your artwork renders correctly.
+
+### Custom artworks (local only)
+
+Users can also add personal artworks without modifying the repository by placing
+`.txt` files in `~/.config/gh-art/artworks/`, or by using `gh art import <file>`.
 
 ## Code of Conduct
 
