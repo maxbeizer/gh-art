@@ -239,6 +239,13 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 	fmt.Print("\033[?25l")
 	defer fmt.Print("\033[?25h")
 
+	// Shuffle artwork order for variety each session
+	order := make([]Artwork, len(artworks))
+	copy(order, artworks)
+	rand.Shuffle(len(order), func(i, j int) {
+		order[i], order[j] = order[j], order[i]
+	})
+
 	clearScreen()
 	idx := 0
 
@@ -254,9 +261,9 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 			stopCh = make(chan struct{})
 			go func(a Artwork, style string, w, h int, ch chan struct{}) {
 				revealArtwork(a, style, w, h, ch)
-			}(artworks[idx], revealStyle, width, height, stopCh)
+			}(order[idx], revealStyle, width, height, stopCh)
 		} else {
-			drawArtwork(artworks[idx])
+			drawArtwork(order[idx])
 		}
 	}
 
@@ -286,7 +293,7 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 		select {
 		case <-ticker.C:
 			cancelReveal()
-			idx = (idx + 1) % len(artworks)
+			idx = (idx + 1) % len(order)
 			clearScreen()
 			showArtwork()
 			ticker.Reset(interval)
@@ -298,13 +305,13 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 				return nil
 			case "n", "tab":
 				cancelReveal()
-				idx = (idx + 1) % len(artworks)
+				idx = (idx + 1) % len(order)
 				clearScreen()
 				showArtwork()
 				ticker.Reset(interval)
 			case "p", "shift-tab":
 				cancelReveal()
-				idx = (idx - 1 + len(artworks)) % len(artworks)
+				idx = (idx - 1 + len(order)) % len(order)
 				clearScreen()
 				showArtwork()
 				ticker.Reset(interval)
