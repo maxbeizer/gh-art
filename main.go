@@ -142,6 +142,9 @@ func main() {
 			interval, _ := cmd.Flags().GetDuration("interval")
 			reveal, _ := cmd.Flags().GetBool("reveal")
 			revealStyle, _ := cmd.Flags().GetString("reveal-style")
+			if cmd.Flags().Changed("reveal-style") {
+				reveal = true
+			}
 			return runScreensaver(interval, reveal, revealStyle)
 		},
 	}
@@ -169,6 +172,9 @@ func main() {
 			name := args[0]
 			reveal, _ := cmd.Flags().GetBool("reveal")
 			revealStyle, _ := cmd.Flags().GetString("reveal-style")
+			if cmd.Flags().Changed("reveal-style") {
+				reveal = true
+			}
 			for _, a := range artworks {
 				if a.Name == name {
 					if reveal {
