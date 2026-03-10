@@ -664,6 +664,13 @@ func revealFlip(lines, info []string, width, height, topPad int, stopCh <-chan s
 			oldTopPad = 2
 		}
 		oldGrid = rasterize(prevLines, oldTopPad)
+
+		// Clear old info lines immediately so they don't linger during the flip
+		oldInfoStart := oldTopPad + len(prevLines) + 2
+		for i := 0; i < len(prevInfo)+1; i++ {
+			moveCursor(oldInfoStart+i, 1)
+			fmt.Print(strings.Repeat(" ", width))
+		}
 	}
 
 	// Collect every screen position that needs to change
