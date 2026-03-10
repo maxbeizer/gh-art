@@ -618,105 +618,98 @@ func revealFade(lines, info []string, width, topPad int, stopCh <-chan struct{})
 }
 
 func revealFlip(lines, info []string, width, height, topPad int, stopCh <-chan struct{}, prevArt *Artwork) {
-	// Build the previous artwork's rendered lines for the transition.
-	// If no previous art, start from a blank screen.
-	var prevLines []string
-	var prevTopPad int
+	// Build a screen-sized grid for both old and new artwork so we can
+	// compare every cell and flip only the ones that differ.
+
+	// Rasterize an artwork's lines into a full-width grid row.
+	rasterize := func(artLines []string, pad int) [][]byte {
+		rows := make([][]byte, len(artLines))
+		for i, line := range artLines {
+			row := make([]byte, width)
+			for j := range row {
+				row[j] = ' '
+			}
+			offset := 0
+			if len(line) < width {
+				offset = (width - len(line)) / 2
+			}
+			for j := 0; j < len(line) && offset+j < width; j++ {
+				row[offset+j] = line[j]
+			}
+			rows[i] = row
+		}
+		return rows
+	}
+
+	newGrid := rasterize(lines, topPad)
+
+	// Build the old grid from the previous artwork
+	var oldGrid [][]byte
+	var oldTopPad int
 	if prevArt != nil {
-		prevLines = strings.Split(strings.Trim(prevArt.Art, "\n"), "\n")
+		prevLines := strings.Split(strings.Trim(prevArt.Art, "\n"), "\n")
 		prevInfo := []string{
 			fmt.Sprintf("%s — %s (%s)", prevArt.Artist, prevArt.Title, prevArt.Year),
 			prevArt.URL,
 		}
 		prevContentLines := len(prevLines) + len(prevInfo) + 1
-		prevTopPad = (height - prevContentLines) / 2
-		if prevTopPad < 2 {
-			prevTopPad = 2
+		oldTopPad = (height - prevContentLines) / 2
+		if oldTopPad < 2 {
+			oldTopPad = 2
 		}
+		oldGrid = rasterize(prevLines, oldTopPad)
 	}
 
-	// Collect all positions that differ between previous and next artwork.
-	// Each position gets "flipped" from old char to new char.
+	// Collect every screen position that needs to change
 	type tile struct {
 		row, col int
-		newCh    byte
+		ch       byte
 	}
 
-	// Determine the grid bounds (max rows/cols across both artworks)
-	maxRows := len(lines)
-	if len(prevLines) > maxRows {
-		maxRows = len(prevLines)
-	}
-
+	totalRows := max(len(newGrid), len(oldGrid))
 	var tiles []tile
-	for i := 0; i < maxRows; i++ {
-		// New artwork line
-		var newLine string
-		var newPad int
-		if i < len(lines) {
-			newLine = lines[i]
-			if len(newLine) < width {
-				newPad = (width - len(newLine)) / 2
-			}
-		}
 
-		// Previous artwork line
-		var oldLine string
-		var oldPad int
-		if i < len(prevLines) {
-			oldLine = prevLines[i]
-			if len(oldLine) < width {
-				oldPad = (width - len(oldLine)) / 2
-			}
-		}
+	for i := 0; i < totalRows; i++ {
+		newRow := topPad + i + 1
+		for j := 0; j < width; j++ {
+			var oldCh byte = ' '
+			var newCh byte = ' '
 
-		// Find positions that change
-		maxCols := len(newLine) + newPad
-		oldMaxCols := len(oldLine) + oldPad
-		if oldMaxCols > maxCols {
-			maxCols = oldMaxCols
-		}
-
-		for j := 0; j < maxCols; j++ {
-			var oldCh, newCh byte = ' ', ' '
-
-			if j >= oldPad && j-oldPad < len(oldLine) {
-				oldCh = oldLine[j-oldPad]
-			}
-			if j >= newPad && j-newPad < len(newLine) {
-				newCh = newLine[j-newPad]
+			// Old artwork character at this screen position
+			if oldGrid != nil {
+				oldScreenRow := i + topPad - oldTopPad
+				if oldScreenRow >= 0 && oldScreenRow < len(oldGrid) && j < len(oldGrid[oldScreenRow]) {
+					oldCh = oldGrid[oldScreenRow][j]
+				}
 			}
 
-			// Account for different vertical positioning
-			oldRow := prevTopPad + i + 1
-			newRow := topPad + i + 1
+			// New artwork character
+			if i < len(newGrid) && j < len(newGrid[i]) {
+				newCh = newGrid[i][j]
+			}
 
-			if oldCh != newCh || oldRow != newRow {
-				tiles = append(tiles, tile{newRow, newPad + (j - newPad) + 1, newCh})
+			if oldCh != newCh {
+				tiles = append(tiles, tile{newRow, j + 1, newCh})
 			}
 		}
 	}
 
-	// Shuffle tiles for the random flip effect
+	// Also clear any leftover old rows that extend beyond the new artwork
+	if oldGrid != nil {
+		for i := len(newGrid); i < len(oldGrid); i++ {
+			oldScreenRow := oldTopPad + i + 1
+			for j := 0; j < width; j++ {
+				if oldGrid[i][j] != ' ' {
+					tiles = append(tiles, tile{oldScreenRow, j + 1, ' '})
+				}
+			}
+		}
+	}
+
+	// Shuffle for the random tile-flip effect
 	rand.Shuffle(len(tiles), func(i, j int) {
 		tiles[i], tiles[j] = tiles[j], tiles[i]
 	})
-
-	// Clear screen first if the vertical positioning changed
-	if prevTopPad != topPad || prevArt == nil {
-		clearScreen()
-		// Draw the previous art in place so we can flip from it
-		if prevArt != nil {
-			for i, line := range prevLines {
-				pad := 0
-				if len(line) < width {
-					pad = (width - len(line)) / 2
-				}
-				moveCursor(prevTopPad+i+1, pad+1)
-				fmt.Print(line)
-			}
-		}
-	}
 
 	// Calibrate to ~6 seconds
 	delay := time.Duration(6000/max(len(tiles), 1)) * time.Millisecond
@@ -724,18 +717,23 @@ func revealFlip(lines, info []string, width, height, topPad int, stopCh <-chan s
 		delay = time.Millisecond
 	}
 
-	// Flip tiles one by one
+	// Flip tiles one by one — old art morphs into new art
 	for _, t := range tiles {
 		if stopped(stopCh) {
 			return
 		}
 		moveCursor(t.row, t.col)
-		fmt.Printf("%c", t.newCh)
+		fmt.Printf("%c", t.ch)
 		time.Sleep(delay)
 	}
 
-	// Show info
+	// Show info after flip completes
 	infoStart := topPad + len(lines) + 2
+	// Clear old info area first
+	for i := 0; i < 3; i++ {
+		moveCursor(infoStart+i, 1)
+		fmt.Print(strings.Repeat(" ", width))
+	}
 	for i, line := range info {
 		moveCursor(infoStart+i, 1)
 		printCentered(line, width)
