@@ -673,48 +673,47 @@ func revealFlip(lines, info []string, width, height, topPad int, stopCh <-chan s
 		}
 	}
 
-	// Collect every screen position that needs to change
+	// Work in screen coordinates to compare old vs new at every position.
+	// Map each artwork's grid rows to their absolute screen rows.
 	type tile struct {
 		row, col int
 		ch       byte
 	}
 
-	totalRows := max(len(newGrid), len(oldGrid))
-	var tiles []tile
+	// Build screen-row maps: screenRow -> full-width rasterized row
+	oldScreen := map[int][]byte{}
+	newScreen := map[int][]byte{}
 
-	for i := 0; i < totalRows; i++ {
-		newRow := topPad + i + 1
-		for j := 0; j < width; j++ {
-			var oldCh byte = ' '
-			var newCh byte = ' '
+	minRow, maxRow := topPad+1, topPad+len(newGrid)
 
-			// Old artwork character at this screen position
-			if oldGrid != nil {
-				oldScreenRow := i + topPad - oldTopPad
-				if oldScreenRow >= 0 && oldScreenRow < len(oldGrid) && j < len(oldGrid[oldScreenRow]) {
-					oldCh = oldGrid[oldScreenRow][j]
-				}
-			}
-
-			// New artwork character
-			if i < len(newGrid) && j < len(newGrid[i]) {
-				newCh = newGrid[i][j]
-			}
-
-			if oldCh != newCh {
-				tiles = append(tiles, tile{newRow, j + 1, newCh})
-			}
+	for i, row := range newGrid {
+		newScreen[topPad+i+1] = row
+	}
+	for i, row := range oldGrid {
+		r := oldTopPad + i + 1
+		oldScreen[r] = row
+		if r < minRow {
+			minRow = r
+		}
+		if r > maxRow {
+			maxRow = r
 		}
 	}
 
-	// Also clear any leftover old rows that extend beyond the new artwork
-	if oldGrid != nil {
-		for i := len(newGrid); i < len(oldGrid); i++ {
-			oldScreenRow := oldTopPad + i + 1
-			for j := 0; j < width; j++ {
-				if oldGrid[i][j] != ' ' {
-					tiles = append(tiles, tile{oldScreenRow, j + 1, ' '})
-				}
+	var tiles []tile
+	for r := minRow; r <= maxRow; r++ {
+		oldRow := oldScreen[r]
+		newRow := newScreen[r]
+		for j := 0; j < width; j++ {
+			var oldCh, newCh byte = ' ', ' '
+			if oldRow != nil && j < len(oldRow) {
+				oldCh = oldRow[j]
+			}
+			if newRow != nil && j < len(newRow) {
+				newCh = newRow[j]
+			}
+			if oldCh != newCh {
+				tiles = append(tiles, tile{r, j + 1, newCh})
 			}
 		}
 	}
