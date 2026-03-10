@@ -148,7 +148,7 @@ func main() {
 
 	rootCmd.Flags().Duration("interval", 8*time.Second, "rotation interval (e.g., 10s, 1m)")
 	rootCmd.Flags().Bool("reveal", false, "progressively reveal artwork instead of showing it instantly")
-	rootCmd.Flags().String("reveal-style", "typewriter", "reveal animation style: typewriter, random, fade")
+	rootCmd.Flags().String("reveal-style", "typewriter", "reveal animation style: typewriter, random, fade, flip")
 
 	listCmd := &cobra.Command{
 		Use:   "list",
@@ -177,7 +177,7 @@ func main() {
 							width, height = 80, 24
 						}
 						stopCh := make(chan struct{})
-						revealArtwork(a, revealStyle, width, height, stopCh)
+						revealArtwork(a, revealStyle, width, height, stopCh, nil)
 					} else {
 						drawArtwork(a)
 					}
@@ -189,7 +189,7 @@ func main() {
 	}
 
 	showCmd.Flags().Bool("reveal", false, "progressively reveal artwork")
-	showCmd.Flags().String("reveal-style", "typewriter", "reveal animation style: typewriter, random, fade")
+	showCmd.Flags().String("reveal-style", "typewriter", "reveal animation style: typewriter, random, fade, flip")
 
 	importCmd := &cobra.Command{
 		Use:   "import <file>",
@@ -248,6 +248,7 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 
 	clearScreen()
 	idx := 0
+	var prevArt *Artwork // tracks previous artwork for flip transitions
 
 	// stopCh controls the current reveal animation; closing it cancels the reveal
 	var stopCh chan struct{}
@@ -259,9 +260,9 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 				width, height = 80, 24
 			}
 			stopCh = make(chan struct{})
-			go func(a Artwork, style string, w, h int, ch chan struct{}) {
-				revealArtwork(a, style, w, h, ch)
-			}(order[idx], revealStyle, width, height, stopCh)
+			go func(a Artwork, style string, w, h int, ch chan struct{}, prev *Artwork) {
+				revealArtwork(a, style, w, h, ch, prev)
+			}(order[idx], revealStyle, width, height, stopCh, prevArt)
 		} else {
 			drawArtwork(order[idx])
 		}
@@ -289,12 +290,17 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	isFlip := reveal && revealStyle == "flip"
+
 	for {
 		select {
 		case <-ticker.C:
 			cancelReveal()
+			prevArt = &order[idx]
 			idx = (idx + 1) % len(order)
-			clearScreen()
+			if !isFlip {
+				clearScreen()
+			}
 			showArtwork()
 			ticker.Reset(interval)
 		case key := <-inputCh:
@@ -305,14 +311,20 @@ func runScreensaver(interval time.Duration, reveal bool, revealStyle string) err
 				return nil
 			case "n", "tab":
 				cancelReveal()
+				prevArt = &order[idx]
 				idx = (idx + 1) % len(order)
-				clearScreen()
+				if !isFlip {
+					clearScreen()
+				}
 				showArtwork()
 				ticker.Reset(interval)
 			case "p", "shift-tab":
 				cancelReveal()
+				prevArt = &order[idx]
 				idx = (idx - 1 + len(order)) % len(order)
-				clearScreen()
+				if !isFlip {
+					clearScreen()
+				}
 				showArtwork()
 				ticker.Reset(interval)
 			}
@@ -407,8 +419,9 @@ func clearScreen() {
 }
 
 // revealArtwork progressively renders an artwork using the given style.
-// It stops early if stopCh is closed.
-func revealArtwork(a Artwork, style string, width, height int, stopCh <-chan struct{}) {
+// It stops early if stopCh is closed. prevArt is used by the "flip" style
+// to transition from the previous artwork (Vanna White tile-flip effect).
+func revealArtwork(a Artwork, style string, width, height int, stopCh <-chan struct{}, prevArt *Artwork) {
 	lines := strings.Split(strings.Trim(a.Art, "\n"), "\n")
 	info := []string{
 		fmt.Sprintf("%s — %s (%s)", a.Artist, a.Title, a.Year),
@@ -427,6 +440,8 @@ func revealArtwork(a Artwork, style string, width, height int, stopCh <-chan str
 		revealRandom(lines, info, width, topPad, stopCh)
 	case "fade":
 		revealFade(lines, info, width, topPad, stopCh)
+	case "flip":
+		revealFlip(lines, info, width, height, topPad, stopCh, prevArt)
 	default:
 		revealTypewriter(lines, info, width, topPad, stopCh)
 	}
@@ -595,6 +610,131 @@ func revealFade(lines, info []string, width, topPad int, stopCh <-chan struct{})
 		}
 	}
 
+	infoStart := topPad + len(lines) + 2
+	for i, line := range info {
+		moveCursor(infoStart+i, 1)
+		printCentered(line, width)
+	}
+}
+
+func revealFlip(lines, info []string, width, height, topPad int, stopCh <-chan struct{}, prevArt *Artwork) {
+	// Build the previous artwork's rendered lines for the transition.
+	// If no previous art, start from a blank screen.
+	var prevLines []string
+	var prevTopPad int
+	if prevArt != nil {
+		prevLines = strings.Split(strings.Trim(prevArt.Art, "\n"), "\n")
+		prevInfo := []string{
+			fmt.Sprintf("%s — %s (%s)", prevArt.Artist, prevArt.Title, prevArt.Year),
+			prevArt.URL,
+		}
+		prevContentLines := len(prevLines) + len(prevInfo) + 1
+		prevTopPad = (height - prevContentLines) / 2
+		if prevTopPad < 2 {
+			prevTopPad = 2
+		}
+	}
+
+	// Collect all positions that differ between previous and next artwork.
+	// Each position gets "flipped" from old char to new char.
+	type tile struct {
+		row, col int
+		newCh    byte
+	}
+
+	// Determine the grid bounds (max rows/cols across both artworks)
+	maxRows := len(lines)
+	if len(prevLines) > maxRows {
+		maxRows = len(prevLines)
+	}
+
+	var tiles []tile
+	for i := 0; i < maxRows; i++ {
+		// New artwork line
+		var newLine string
+		var newPad int
+		if i < len(lines) {
+			newLine = lines[i]
+			if len(newLine) < width {
+				newPad = (width - len(newLine)) / 2
+			}
+		}
+
+		// Previous artwork line
+		var oldLine string
+		var oldPad int
+		if i < len(prevLines) {
+			oldLine = prevLines[i]
+			if len(oldLine) < width {
+				oldPad = (width - len(oldLine)) / 2
+			}
+		}
+
+		// Find positions that change
+		maxCols := len(newLine) + newPad
+		oldMaxCols := len(oldLine) + oldPad
+		if oldMaxCols > maxCols {
+			maxCols = oldMaxCols
+		}
+
+		for j := 0; j < maxCols; j++ {
+			var oldCh, newCh byte = ' ', ' '
+
+			if j >= oldPad && j-oldPad < len(oldLine) {
+				oldCh = oldLine[j-oldPad]
+			}
+			if j >= newPad && j-newPad < len(newLine) {
+				newCh = newLine[j-newPad]
+			}
+
+			// Account for different vertical positioning
+			oldRow := prevTopPad + i + 1
+			newRow := topPad + i + 1
+
+			if oldCh != newCh || oldRow != newRow {
+				tiles = append(tiles, tile{newRow, newPad + (j - newPad) + 1, newCh})
+			}
+		}
+	}
+
+	// Shuffle tiles for the random flip effect
+	rand.Shuffle(len(tiles), func(i, j int) {
+		tiles[i], tiles[j] = tiles[j], tiles[i]
+	})
+
+	// Clear screen first if the vertical positioning changed
+	if prevTopPad != topPad || prevArt == nil {
+		clearScreen()
+		// Draw the previous art in place so we can flip from it
+		if prevArt != nil {
+			for i, line := range prevLines {
+				pad := 0
+				if len(line) < width {
+					pad = (width - len(line)) / 2
+				}
+				moveCursor(prevTopPad+i+1, pad+1)
+				fmt.Print(line)
+			}
+		}
+	}
+
+	// Calibrate to ~6 seconds
+	delay := time.Duration(6000/max(len(tiles), 1)) * time.Millisecond
+	if delay < time.Millisecond {
+		delay = time.Millisecond
+	}
+
+	// Flip tiles one by one
+	for _, t := range tiles {
+		if stopped(stopCh) {
+			return
+		}
+		moveCursor(t.row, t.col)
+		fmt.Printf("%c", t.newCh)
+		time.Sleep(delay)
+	}
+
+	// Show info
 	infoStart := topPad + len(lines) + 2
 	for i, line := range info {
 		moveCursor(infoStart+i, 1)
